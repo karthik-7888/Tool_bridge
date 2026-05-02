@@ -1,7 +1,12 @@
-import { GoogleAuthButton } from "@/components/GoogleAuthButton";
+import { getServerSession } from "next-auth";
 
-export function HeroSection() {
+import { authOptions } from "@/auth";
+import { GoogleAuthButton } from "@/components/GoogleAuthButton";
+import { SignOutButton } from "@/components/SignOutButton";
+
+export async function HeroSection() {
   const googleAuthEnabled = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === "true";
+  const session = await getServerSession(authOptions);
 
   return (
     <section className="relative overflow-hidden border-b border-gray-200/80 dark:border-gray-800/80">
@@ -20,20 +25,45 @@ export function HeroSection() {
             </p>
           </div>
 
-          <div className="rounded-3xl border border-gray-200/70 bg-white/90 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur dark:border-gray-800/80 dark:bg-gray-950/85 dark:shadow-[0_24px_80px_rgba(2,6,23,0.55)] sm:p-7">
-            <div className="max-w-sm">
-              <p className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-                Sign in to continue
-              </p>
-              <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
-                Save your progress and access your uploaded assignments anytime.
+          {session?.user ? (
+            <div className="rounded-3xl border border-emerald-200/70 bg-white/90 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur dark:border-emerald-900/70 dark:bg-gray-950/85 dark:shadow-[0_24px_80px_rgba(2,6,23,0.55)] sm:p-7">
+              <div className="max-w-sm">
+                <p className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                  Signed in successfully
+                </p>
+                <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                  {session.user.name || session.user.email || "Your Google account is connected."}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                  You can keep using ToolBridge now and add saved progress later without changing your sign-in flow.
+                </p>
+              </div>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <a
+                  href="#tool-form"
+                  className="inline-flex h-12 items-center justify-center rounded-2xl bg-indigo-600 px-5 text-sm font-medium text-white transition hover:bg-indigo-500"
+                >
+                  Continue to workspace
+                </a>
+                <SignOutButton className="inline-flex h-12 items-center justify-center rounded-2xl border border-gray-300 bg-white px-5 text-sm font-medium text-gray-900 transition hover:border-indigo-400 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:hover:border-indigo-500/60 dark:hover:bg-gray-900" />
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-gray-200/70 bg-white/90 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur dark:border-gray-800/80 dark:bg-gray-950/85 dark:shadow-[0_24px_80px_rgba(2,6,23,0.55)] sm:p-7">
+              <div className="max-w-sm">
+                <p className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                  Sign in to continue
+                </p>
+                <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                  Save your progress and access your uploaded assignments anytime.
+                </p>
+              </div>
+              <GoogleAuthButton enabled={googleAuthEnabled} />
+              <p className="mt-4 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                No password required. We only use Google for secure authentication.
               </p>
             </div>
-            <GoogleAuthButton enabled={googleAuthEnabled} />
-            <p className="mt-4 text-sm leading-6 text-gray-500 dark:text-gray-400">
-              No password required. We only use Google for secure authentication.
-            </p>
-          </div>
+          )}
         </div>
       </div>
     </section>

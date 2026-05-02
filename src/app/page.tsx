@@ -6,11 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import { ExampleQuestions } from "@/components/ExampleQuestions";
 import { Footer } from "@/components/Footer";
 import { HeroSection } from "@/components/HeroSection";
+import { HistoryPanel } from "@/components/HistoryPanel";
 import { Navbar } from "@/components/Navbar";
 import { OutputSection } from "@/components/OutputSection";
 import { ToolForm } from "@/components/ToolForm";
 import { getToolById } from "@/lib/tools";
-import type { SolveOutput, ToolId, UploadedContextFile } from "@/types";
+import type { SavedHistoryItem, SolveOutput, ToolId, UploadedContextFile } from "@/types";
 
 interface FieldErrors {
   tool: string | null;
@@ -34,8 +35,12 @@ export default function HomePage() {
   const [errorScreenshot, setErrorScreenshot] = useState<UploadedContextFile | null>(null);
   const [showContext, setShowContext] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [historyItems, setHistoryItems] = useState<SavedHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyConfigured, setHistoryConfigured] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>(emptyErrors);
   const [result, setResult] = useState<{
+    toolId: ToolId;
     toolName: string;
     response: SolveOutput;
     submittedProblem: string;
@@ -49,6 +54,91 @@ export default function HomePage() {
     if (result) {
       outputSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+  }, [result]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHistory() {
+      try {
+        setHistoryLoading(true);
+        const response = await fetch("/api/history", { cache: "no-store" });
+        const data = (await response.json()) as {
+          configured?: boolean;
+          items?: SavedHistoryItem[];
+        };
+
+        if (cancelled) {
+          return;
+        }
+
+        setHistoryConfigured(Boolean(data.configured));
+        setHistoryItems(data.items ?? []);
+      } catch {
+        if (!cancelled) {
+          setHistoryConfigured(false);
+          setHistoryItems([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      }
+    }
+
+    loadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function saveHistory() {
+      if (!result) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/history", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            toolId: result.toolId,
+            toolName: result.toolName,
+            problem: result.submittedProblem,
+            response: result.response
+          })
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const refreshed = await fetch("/api/history", { cache: "no-store" });
+        const data = (await refreshed.json()) as {
+          configured?: boolean;
+          items?: SavedHistoryItem[];
+        };
+
+        if (!cancelled) {
+          setHistoryConfigured(Boolean(data.configured));
+          setHistoryItems(data.items ?? []);
+        }
+      } catch {
+        // Keep the main solve flow successful even if history persistence is unavailable.
+      }
+    }
+
+    saveHistory();
+
+    return () => {
+      cancelled = true;
+    };
   }, [result]);
 
   async function readFileAsDataUrl(file: File) {
@@ -190,7 +280,7 @@ export default function HomePage() {
       }
 
       const toolName = getToolById(selectedTool)?.name ?? "Selected Tool";
-      setResult({ toolName, response: data, submittedProblem: normalizedProblem });
+      setResult({ toolId: selectedTool, toolName, response: data, submittedProblem: normalizedProblem });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Something went wrong - please try again.";
       setErrors((current) => ({ ...current, form: message }));
@@ -223,6 +313,19 @@ export default function HomePage() {
       const nextLength = problemInputRef.current?.value.length ?? 0;
       problemInputRef.current?.setSelectionRange(nextLength, nextLength);
     }, 250);
+  }
+
+  function handleReuseHistoryItem(item: SavedHistoryItem) {
+    setSelectedTool(item.toolId as ToolId);
+    setProblem(item.problem);
+    setResult({
+      toolId: item.toolId as ToolId,
+      toolName: item.toolName,
+      response: item.response,
+      submittedProblem: item.problem
+    });
+    setErrors(emptyErrors);
+    formSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
@@ -260,6 +363,12 @@ export default function HomePage() {
       </div>
 
       <ExampleQuestions onSelectExample={handleExampleSelect} />
+      <HistoryPanel
+        items={historyItems}
+        loading={historyLoading}
+        configured={historyConfigured}
+        onReuse={handleReuseHistoryItem}
+      />
 
       {result ? (
         <div ref={outputSectionRef}>

@@ -47,6 +47,15 @@ export interface SolveOutput {
   stillStuck: string;
 }
 
+export interface SavedHistoryItem {
+  id: string;
+  toolId: string;
+  toolName: string;
+  problem: string;
+  response: SolveOutput;
+  createdAt: string;
+}
+
 export interface SolvedResult {
   toolName: string;
   response: SolveOutput;
