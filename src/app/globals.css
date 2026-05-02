@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background-color: #ffffff;
+  color: #111827;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #030712;
+    color: #f3f4f6;
+  }
+}
+
+::selection {
+  background-color: rgba(99, 102, 241, 0.22);
+}
+
+@layer base {
+  * {
+    @apply border-gray-200 dark:border-gray-800;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-balance;
+  }
+
+  p {
+    @apply text-pretty;
+  }
+}
