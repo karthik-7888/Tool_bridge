@@ -29,15 +29,38 @@ const solveStepSchema = z.object({
   command: z.string().trim().min(1).nullable().optional()
 });
 
-// ✅ CHANGE 1: added dontDoThis here
 const SolveOutputSchema = z.object({
   summary: z.string().trim().min(10),
-  dontDoThis: z.array(z.string().trim().min(3)).length(3),
-  steps: z.array(solveStepSchema).min(4).max(8),
-  commonMistakes: z.array(z.string().trim().min(3)).length(3),
+  dontDoThis: z.array(z.string().trim().min(3)).min(2).max(5),
+  steps: z.array(solveStepSchema).min(3).max(8),
+  commonMistakes: z.array(z.string().trim().min(3)).min(2).max(5),
   checkpoint: z.string().trim().min(5),
   stillStuck: z.string().trim().min(5)
 });
+
+const ipRequestCounts = new Map<string, { count: number; resetAt: number }>();
+
+function getClientIp(request: Request) {
+  const forwarded = request.headers.get("x-forwarded-for");
+  return forwarded?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
+}
+
+function isRateLimited(ip: string) {
+  const now = Date.now();
+  const entry = ipRequestCounts.get(ip);
+
+  if (!entry || now > entry.resetAt) {
+    ipRequestCounts.set(ip, { count: 1, resetAt: now + 60_000 });
+    return false;
+  }
+
+  if (entry.count >= 10) {
+    return true;
+  }
+
+  entry.count += 1;
+  return false;
+}
 
 function mapServerError(error: unknown) {
   if (!(error instanceof Error)) {
@@ -53,22 +76,40 @@ function mapServerError(error: unknown) {
   if (lowered.includes("quota exceeded")) {
     return {
       status: 429,
-      message:
-        "Your Gemini API key is active, but this project has no available Gemini quota right now. Check Google AI Studio quota or billing, then try again."
+      message: "AI quota reached for now. Try again in a few minutes."
     };
   }
 
   if (lowered.includes("api key not valid") || lowered.includes("invalid api key")) {
     return {
       status: 401,
-      message: "Your Gemini API key is invalid. Replace GEMINI_API_KEY in .env.local and restart the dev server."
+      message: "AI service configuration error. Please contact support."
     };
   }
 
-  if (lowered.includes("timed out")) {
+  if (lowered.includes("timed out") || lowered.includes("aborterror")) {
     return {
       status: 504,
-      message: "Gemini took too long to respond. Try a shorter problem description and retry."
+      message: "This took too long. Try describing your problem more briefly and retry."
+    };
+  }
+
+  if (
+    lowered.includes("econnreset") ||
+    lowered.includes("enotfound") ||
+    lowered.includes("fetch failed") ||
+    lowered.includes("network error")
+  ) {
+    return {
+      status: 503,
+      message: "Network error. Check your internet connection and try again."
+    };
+  }
+
+  if (lowered.includes("did not return valid json") || lowered.includes("unexpected response")) {
+    return {
+      status: 500,
+      message: "AI returned an unexpected response. Please try again."
     };
   }
 
@@ -81,7 +122,7 @@ function mapServerError(error: unknown) {
 
   return {
     status: 500,
-    message: "Something went wrong - please try again."
+    message: "Something went wrong. Please try again in a moment."
   };
 }
 
@@ -155,8 +196,26 @@ function parseGeminiJson(rawText: string) {
 
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request);
+
+    if (isRateLimited(ip)) {
+      return NextResponse.json(
+        { error: "Too many requests. Please wait a minute before trying again." },
+        { status: 429 }
+      );
+    }
+
     const body = (await request.json()) as unknown;
-    const input = solveInputSchema.parse(body);
+    const inputResult = solveInputSchema.safeParse(body);
+
+    if (!inputResult.success) {
+      return NextResponse.json(
+        { error: "Please check the form fields and try again." },
+        { status: 400 }
+      );
+    }
+
+    const input = inputResult.data;
 
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
@@ -180,9 +239,14 @@ export async function POST(request: Request) {
       attachments.map(({ mimeType, dataUrl }) => ({ mimeType, dataUrl }))
     );
     const parsedJson = parseGeminiJson(rawResponse);
-    const validated = SolveOutputSchema.parse(parsedJson);
+    const validatedResult = SolveOutputSchema.safeParse(parsedJson);
 
-    // ✅ CHANGE 2: added dontDoThis to normalized output
+    if (!validatedResult.success) {
+      throw new Error("AI returned an unexpected response.");
+    }
+
+    const validated = validatedResult.data;
+
     const normalized = {
       summary: validated.summary,
       dontDoThis: validated.dontDoThis,
@@ -202,8 +266,7 @@ export async function POST(request: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         {
-          error: "Invalid request payload.",
-          details: error.flatten()
+          error: "Please check the form fields and try again."
         },
         { status: 400 }
       );

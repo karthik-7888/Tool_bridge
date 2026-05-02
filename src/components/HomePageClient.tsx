@@ -219,7 +219,7 @@ export function HomePageClient() {
     const nextErrors: FieldErrors = { ...emptyErrors };
 
     if (!selectedTool) {
-      nextErrors.tool = "Select a tool to continue.";
+      nextErrors.tool = "Please select a tool first.";
     }
 
     const trimmedProblem = problem.trim();
@@ -228,7 +228,7 @@ export function HomePageClient() {
     if (!trimmedProblem && !hasAttachment) {
       nextErrors.problem = "Add a problem description or attach a PDF/screenshot before submitting.";
     } else if (trimmedProblem.length > 0 && trimmedProblem.length < 20 && !hasAttachment) {
-      nextErrors.problem = "Please add a little more detail. Minimum 20 characters.";
+      nextErrors.problem = "Please describe your problem in at least 20 characters.";
     }
 
     setErrors(nextErrors);
@@ -237,6 +237,10 @@ export function HomePageClient() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSubmitting) {
+      return;
+    }
 
     if (!validate() || !selectedTool) {
       return;
@@ -370,7 +374,6 @@ export function HomePageClient() {
           <OutputSection
             toolName={result.toolName}
             response={result.response}
-            problem={result.submittedProblem}
             onFollowUp={handleFollowUp}
           />
         </div>

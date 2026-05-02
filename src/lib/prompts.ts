@@ -342,6 +342,15 @@ function getToolKnowledge(toolId: string): string {
   return knowledge[toolId] ?? "";
 }
 
+function sanitizeUserInput(input: string) {
+  return input
+    .replace(/ignore\s+(all\s+|previous\s+|above\s+)?instructions/gi, "[removed]")
+    .replace(/reveal\s+(your\s+|the\s+)?(system\s+)?prompt/gi, "[removed]")
+    .replace(/you\s+are\s+(no\s+longer|now)\s+/gi, "[removed]")
+    .replace(/give\s+me\s+(the\s+)?(api\s+key|apikey|secret)/gi, "[removed]")
+    .trim();
+}
+
 // ============================================
 // MAIN PROMPT BUILDER
 // ============================================
@@ -350,6 +359,10 @@ export function buildSolvePrompt(input: SolveInput): string {
   const tool = getToolById(input.tool);
   const toolName = tool?.name ?? input.tool;
   const toolKnowledge = getToolKnowledge(input.tool);
+  const problem = sanitizeUserInput(input.problem);
+  const errorMessage = input.errorMessage ? sanitizeUserInput(input.errorMessage) : "";
+  const assignmentType = input.assignmentType?.trim() || "";
+  const university = input.university?.trim() || "";
 
   return `
 You are a senior engineer and TA who has helped hundreds of 
@@ -372,10 +385,10 @@ YOUR KNOWLEDGE ABOUT THIS TOOL:
 ${toolKnowledge}
 
 Student context:
-- Problem: ${input.problem}
-- Error message: ${input.errorMessage?.trim() || "Not provided"}
-- Assignment type: ${input.assignmentType?.trim() || "Not provided"}
-- University: ${input.university?.trim() || "Not provided"}
+- Problem: ${problem}
+- Error message: ${errorMessage || "Not provided"}
+- Assignment type: ${assignmentType || "Not provided"}
+- University: ${university || "Not provided"}
 - Assignment PDF: ${input.assignmentPdf?.name ? `${input.assignmentPdf.name} attached` : "Not provided"}
 - Error screenshot: ${input.errorScreenshot?.name ? `${input.errorScreenshot.name} attached` : "Not provided"}
 
@@ -386,9 +399,9 @@ RESPONSE RULES:
   The first sentence must be the most actionable sentence possible.
   If helpful, the second sentence can briefly explain why the
   issue feels confusing in this tool.
-- dontDoThis: 3 specific things NOT to do first.
+- dontDoThis: 2 to 5 specific things NOT to do first.
   Students fear making things worse. This removes that fear.
-- Steps: 4 to 8 steps. Use "you" always.
+- Steps: 3 to 8 steps. Use "you" always.
   Give FULL menu paths (Setup → Model Libraries → Add Row).
   Give exact commands where applicable.
   If an assignment PDF or error screenshot is attached, use that context together with the typed prompt.
@@ -397,7 +410,7 @@ RESPONSE RULES:
   If path varies by institution, say:
   "Exact path depends on your lab setup — check with your TA,
    but look for X."
-- commonMistakes: exactly 3 short items specific to this problem.
+- commonMistakes: 2 to 5 short items specific to this problem.
 - checkpoint: what success looks like at the end. Be specific.
 - stillStuck: next debugging direction. End with:
   "Most students solve this in 1 to 2 hours once they follow 
@@ -407,7 +420,7 @@ Return ONLY raw JSON. No markdown. No code fences. No commentary.
 Exact schema:
 {
   "summary": "string",
-  "dontDoThis": ["string", "string", "string"],
+  "dontDoThis": ["string", "string"],
   "steps": [
     {
       "stepNumber": 1,
@@ -416,7 +429,7 @@ Exact schema:
       "command": "string or null"
     }
   ],
-  "commonMistakes": ["string", "string", "string"],
+  "commonMistakes": ["string", "string"],
   "checkpoint": "string",
   "stillStuck": "string"
 }

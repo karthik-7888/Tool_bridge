@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChangeEvent, FormEvent, RefObject } from "react";
+import { useEffect, useState } from "react";
 
 import { assignmentTypes, supportedTools, universityOptions } from "@/lib/tools";
 import { cn } from "@/lib/utils";
@@ -102,6 +103,23 @@ export function ToolForm({
   onSubmit
 }: ToolFormProps) {
   const remaining = maxCharacters - problem.length;
+  const [loadingMessage, setLoadingMessage] = useState("Analyzing your problem...");
+
+  useEffect(() => {
+    if (!isSubmitting) {
+      setLoadingMessage("Analyzing your problem...");
+      return;
+    }
+
+    const timers = [
+      window.setTimeout(() => setLoadingMessage("Generating step-by-step workflow..."), 5000),
+      window.setTimeout(() => setLoadingMessage("Almost there. Complex tool problems can take a moment..."), 12000)
+    ];
+
+    return () => {
+      timers.forEach(window.clearTimeout);
+    };
+  }, [isSubmitting]);
 
   return (
     <section id="tool-form" className="mx-auto mt-12 max-w-6xl px-4 sm:px-6 lg:px-8">
@@ -119,7 +137,7 @@ export function ToolForm({
                 <label className="text-sm font-semibold text-gray-900 dark:text-gray-100">1. Select your tool</label>
                 {toolError ? <span className="text-sm text-red-600 dark:text-red-400">{toolError}</span> : null}
               </div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3" role="radiogroup" aria-label="EDA tool">
                 {supportedTools.map((tool) => {
                   const selected = selectedTool === tool.id;
 
@@ -127,18 +145,21 @@ export function ToolForm({
                     <button
                       key={tool.id}
                       type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={`Select ${tool.name}`}
                       onClick={() => onSelectTool(tool.id)}
                       className={cn(
-                        "rounded-2xl border p-5 text-left transition hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950",
+                        "rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950 sm:p-5",
                         selected
                           ? "border-indigo-500 bg-indigo-50 shadow-sm dark:border-indigo-400 dark:bg-indigo-500/10"
                           : "border-gray-200 bg-white hover:border-indigo-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-indigo-500/60 dark:hover:bg-gray-900"
                       )}
                     >
-                      <div className="flex items-start gap-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
                         <div
                           className={cn(
-                            "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold",
+                            "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold sm:h-12 sm:w-12",
                             selected
                               ? "bg-indigo-600 text-white dark:bg-indigo-500"
                               : "bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-200"
@@ -147,8 +168,12 @@ export function ToolForm({
                           {getToolInitials(tool.name)}
                         </div>
                         <div>
-                          <p className="text-base font-semibold text-gray-900 dark:text-gray-100">{tool.name}</p>
-                          <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">{tool.description}</p>
+                          <p className="break-words text-sm font-semibold text-gray-900 dark:text-gray-100 sm:text-base">
+                            {tool.name}
+                          </p>
+                          <p className="mt-2 hidden text-sm leading-6 text-gray-600 dark:text-gray-300 sm:block">
+                            {tool.description}
+                          </p>
                         </div>
                       </div>
                     </button>
@@ -177,7 +202,7 @@ export function ToolForm({
                 value={problem}
                 onChange={(event) => onProblemChange(event.target.value.slice(0, maxCharacters))}
                 placeholder="Type the issue here, or leave this brief and let the PDF / screenshot carry more context."
-                className="mt-4 min-h-[180px] w-full rounded-2xl border border-gray-200 bg-white px-4 py-4 text-base leading-7 text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+                className="mt-4 min-h-[120px] w-full rounded-2xl border border-gray-200 bg-white px-4 py-4 text-base leading-7 text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20 sm:min-h-[180px]"
               />
               <div className="mt-2 flex items-center justify-between gap-3">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -267,10 +292,14 @@ export function ToolForm({
                     <textarea
                       id="errorMessage"
                       value={errorMessage}
-                      onChange={(event) => onErrorMessageChange(event.target.value)}
+                      maxLength={2000}
+                      onChange={(event) => onErrorMessageChange(event.target.value.slice(0, 2000))}
                       placeholder="Paste the raw error text if you have it."
                       className="mt-2 min-h-[120px] w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm leading-7 text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-indigo-400"
                     />
+                    <p className="mt-2 text-right text-xs text-gray-500 dark:text-gray-400">
+                      {errorMessage.length}/2000
+                    </p>
 
                     <div className="mt-4 rounded-2xl border border-dashed border-gray-300 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/50">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -300,13 +329,20 @@ export function ToolForm({
             </div>
 
             {formError ? (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-950 dark:bg-red-950/40 dark:text-red-300">
-                {formError}
+              <div className="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-950 dark:bg-red-950/40 dark:text-red-300 sm:flex-row sm:items-center sm:justify-between">
+                <span>{formError}</span>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="min-h-[44px] rounded-xl border border-red-200 bg-white px-4 py-2 font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900/50"
+                >
+                  Try again
+                </button>
               </div>
             ) : null}
 
-            <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={isSubmitting}>
-              {isSubmitting ? "Preparing your step-by-step solution..." : "Get Step-by-Step Help"}
+            <Button type="submit" size="lg" className="min-h-[48px] w-full sm:w-auto" disabled={isSubmitting}>
+              {isSubmitting ? loadingMessage : "Get Step-by-Step Help"}
             </Button>
           </form>
         </CardContent>
