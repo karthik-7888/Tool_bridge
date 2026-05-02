@@ -12,14 +12,31 @@ const uploadSchema = z.object({
   size: z.number().int().positive().max(8_000_000)
 });
 
+const previousContextSchema = z.object({
+  toolName: z.string().trim().min(1).max(120),
+  problem: z.string().trim().min(1).max(1000),
+  summary: z.string().trim().min(1).max(1000),
+  steps: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(160),
+        instructions: z.string().trim().min(1).max(1200)
+      })
+    )
+    .max(6),
+  checkpoint: z.string().trim().min(1).max(1000),
+  stillStuck: z.string().trim().min(1).max(1000)
+});
+
 const solveInputSchema = z.object({
   tool: z.enum(toolIds),
-  problem: z.string().trim().min(20).max(1000),
+  problem: z.string().trim().min(3).max(1000),
   errorMessage: z.string().trim().max(2000).optional().or(z.literal("")),
   assignmentType: z.string().trim().max(120).optional().or(z.literal("")),
   university: z.string().trim().max(120).optional().or(z.literal("")),
   assignmentPdf: uploadSchema.optional(),
-  errorScreenshot: uploadSchema.optional()
+  errorScreenshot: uploadSchema.optional(),
+  previousContext: previousContextSchema.optional()
 });
 
 const solveStepSchema = z.object({

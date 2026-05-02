@@ -36,6 +36,7 @@ export interface SolveInput {
   university?: string;
   assignmentPdf?: UploadedContextFile;
   errorScreenshot?: UploadedContextFile;
+  previousContext?: FollowUpContext;
 }
 
 export interface SolveOutput {
@@ -59,4 +60,16 @@ export interface SavedHistoryItem {
 export interface SolvedResult {
   toolName: string;
   response: SolveOutput;
+}
+
+export interface FollowUpContext {
+  toolName: string;
+  problem: string;
+  summary: string;
+  steps: Array<{
+    title: string;
+    instructions: string;
+  }>;
+  checkpoint: string;
+  stillStuck: string;
 }

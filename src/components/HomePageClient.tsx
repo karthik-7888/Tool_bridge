@@ -9,7 +9,7 @@ import { HistoryPanel } from "@/components/HistoryPanel";
 import { OutputSection } from "@/components/OutputSection";
 import { ToolForm } from "@/components/ToolForm";
 import { getToolById } from "@/lib/tools";
-import type { SavedHistoryItem, SolveOutput, ToolId, UploadedContextFile } from "@/types";
+import type { FollowUpContext, SavedHistoryItem, SolveOutput, ToolId, UploadedContextFile } from "@/types";
 
 interface FieldErrors {
   tool: string | null;
@@ -36,6 +36,7 @@ export function HomePageClient() {
   const [historyItems, setHistoryItems] = useState<SavedHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyConfigured, setHistoryConfigured] = useState(false);
+  const [followUpContext, setFollowUpContext] = useState<FollowUpContext | null>(null);
   const [errors, setErrors] = useState<FieldErrors>(emptyErrors);
   const [result, setResult] = useState<{
     toolId: ToolId;
@@ -224,11 +225,16 @@ export function HomePageClient() {
 
     const trimmedProblem = problem.trim();
     const hasAttachment = Boolean(assignmentPdf || errorScreenshot);
+    const isFollowUp = Boolean(followUpContext);
 
     if (!trimmedProblem && !hasAttachment) {
-      nextErrors.problem = "Add a problem description or attach a PDF/screenshot before submitting.";
-    } else if (trimmedProblem.length > 0 && trimmedProblem.length < 20 && !hasAttachment) {
+      nextErrors.problem = isFollowUp
+        ? "Ask a short follow-up question before submitting."
+        : "Add a problem description or attach a PDF/screenshot before submitting.";
+    } else if (!isFollowUp && trimmedProblem.length > 0 && trimmedProblem.length < 20 && !hasAttachment) {
       nextErrors.problem = "Please describe your problem in at least 20 characters.";
+    } else if (isFollowUp && trimmedProblem.length > 0 && trimmedProblem.length < 3 && !hasAttachment) {
+      nextErrors.problem = "Please add a little more detail to the follow-up.";
     }
 
     setErrors(nextErrors);
@@ -252,8 +258,11 @@ export function HomePageClient() {
     try {
       const trimmedProblem = problem.trim();
       const hasAttachment = Boolean(assignmentPdf || errorScreenshot);
+      const isFollowUp = Boolean(followUpContext);
       const normalizedProblem =
-        trimmedProblem.length >= 20
+        isFollowUp && trimmedProblem
+          ? trimmedProblem
+          : trimmedProblem.length >= 20
           ? trimmedProblem
           : hasAttachment
             ? `${trimmedProblem || "Attached files only."} Please analyze the uploaded assignment PDF or error screenshot and use that as the main context for the answer.`
@@ -271,7 +280,8 @@ export function HomePageClient() {
           assignmentType: assignmentType || undefined,
           university: university || undefined,
           assignmentPdf: assignmentPdf || undefined,
-          errorScreenshot: errorScreenshot || undefined
+          errorScreenshot: errorScreenshot || undefined,
+          previousContext: followUpContext || undefined
         })
       });
 
@@ -283,6 +293,7 @@ export function HomePageClient() {
 
       const toolName = getToolById(selectedTool)?.name ?? "Selected Tool";
       setResult({ toolId: selectedTool, toolName, response: data, submittedProblem: normalizedProblem });
+      setFollowUpContext(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Something went wrong - please try again.";
       setErrors((current) => ({ ...current, form: message }));
@@ -294,6 +305,7 @@ export function HomePageClient() {
   function handleExampleSelect(toolId: ToolId, question: string) {
     setSelectedTool(toolId);
     setProblem(question);
+    setFollowUpContext(null);
     setErrors(emptyErrors);
 
     formSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -303,23 +315,47 @@ export function HomePageClient() {
     }, 250);
   }
 
+  function handleSelectTool(toolId: ToolId) {
+    if (followUpContext && toolId !== selectedTool) {
+      setFollowUpContext(null);
+    }
+
+    setSelectedTool(toolId);
+  }
+
   function handleFollowUp() {
-    setProblem((currentProblem) => {
-      const source = currentProblem.trim();
-      return source ? `${source}\n\nFollow-up question: ` : "Follow-up question: ";
+    if (!result) {
+      return;
+    }
+
+    setFollowUpContext({
+      toolName: result.toolName,
+      problem: result.submittedProblem,
+      summary: result.response.summary,
+      steps: result.response.steps.slice(0, 6).map((step) => ({
+        title: step.title,
+        instructions: step.instructions
+      })),
+      checkpoint: result.response.checkpoint,
+      stillStuck: result.response.stillStuck
     });
+    setSelectedTool(result.toolId);
+    setProblem("");
+    setErrorMessage("");
+    setAssignmentPdf(null);
+    setErrorScreenshot(null);
+    setErrors(emptyErrors);
     formSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    setShowContext(true);
+    setShowContext(false);
     window.setTimeout(() => {
       problemInputRef.current?.focus();
-      const nextLength = problemInputRef.current?.value.length ?? 0;
-      problemInputRef.current?.setSelectionRange(nextLength, nextLength);
     }, 250);
   }
 
   function handleReuseHistoryItem(item: SavedHistoryItem) {
     setSelectedTool(item.toolId as ToolId);
     setProblem(item.problem);
+    setFollowUpContext(null);
     setResult({
       toolId: item.toolId as ToolId,
       toolName: item.toolName,
@@ -347,7 +383,9 @@ export function HomePageClient() {
           toolError={errors.tool}
           problemError={errors.problem}
           showContext={showContext}
-          onSelectTool={setSelectedTool}
+          isFollowUp={Boolean(followUpContext)}
+          followUpToolName={followUpContext?.toolName ?? null}
+          onSelectTool={handleSelectTool}
           onProblemChange={setProblem}
           onErrorMessageChange={setErrorMessage}
           onAssignmentTypeChange={setAssignmentType}

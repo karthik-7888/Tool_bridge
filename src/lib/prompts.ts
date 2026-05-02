@@ -363,6 +363,30 @@ export function buildSolvePrompt(input: SolveInput): string {
   const errorMessage = input.errorMessage ? sanitizeUserInput(input.errorMessage) : "";
   const assignmentType = input.assignmentType?.trim() || "";
   const university = input.university?.trim() || "";
+  const previousContext = input.previousContext;
+  const previousAnswerContext = previousContext
+    ? `
+This is a follow-up question. Treat it like a student continuing the same conversation.
+
+Previous question:
+${sanitizeUserInput(previousContext.problem)}
+
+Previous answer summary:
+${sanitizeUserInput(previousContext.summary)}
+
+Previous steps you already gave:
+${previousContext.steps
+  .slice(0, 6)
+  .map((step, index) => `${index + 1}. ${sanitizeUserInput(step.title)} - ${sanitizeUserInput(step.instructions).slice(0, 500)}`)
+  .join("\n")}
+
+Previous checkpoint:
+${sanitizeUserInput(previousContext.checkpoint)}
+
+Previous next-debugging direction:
+${sanitizeUserInput(previousContext.stillStuck)}
+`.trim()
+    : "No previous answer. This is the first question in the thread.";
 
   return `
 You are a senior engineer and TA who has helped hundreds of 
@@ -392,7 +416,15 @@ Student context:
 - Assignment PDF: ${input.assignmentPdf?.name ? `${input.assignmentPdf.name} attached` : "Not provided"}
 - Error screenshot: ${input.errorScreenshot?.name ? `${input.errorScreenshot.name} attached` : "Not provided"}
 
+Conversation context:
+${previousAnswerContext}
+
 RESPONSE RULES:
+- If this is a follow-up, do NOT restart from scratch.
+  Answer the follow-up directly in the summary first, then only include
+  the next steps needed from the current point.
+  Refer naturally to the previous answer as "the earlier steps" or
+  "where you are now" instead of repeating the whole workflow.
 - Summary: do NOT restate the problem.
   Start with what is most likely wrong and what the student
   should do first.

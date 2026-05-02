@@ -24,6 +24,8 @@ interface ToolFormProps {
   toolError: string | null;
   problemError: string | null;
   showContext: boolean;
+  isFollowUp: boolean;
+  followUpToolName: string | null;
   onSelectTool: (toolId: ToolId) => void;
   onProblemChange: (value: string) => void;
   onErrorMessageChange: (value: string) => void;
@@ -90,6 +92,8 @@ export function ToolForm({
   toolError,
   problemError,
   showContext,
+  isFollowUp,
+  followUpToolName,
   onSelectTool,
   onProblemChange,
   onErrorMessageChange,
@@ -125,9 +129,11 @@ export function ToolForm({
     <section id="tool-form" className="mx-auto mt-12 max-w-6xl px-4 sm:px-6 lg:px-8">
       <Card className="overflow-hidden shadow-soft">
         <CardHeader>
-          <CardTitle>The assignment help workflow</CardTitle>
+          <CardTitle>{isFollowUp ? "Ask a follow-up" : "The assignment help workflow"}</CardTitle>
           <CardDescription>
-            Select the tool, type the problem if you want, and attach supporting files only when they help.
+            {isFollowUp
+              ? `Continue from the last ${followUpToolName ?? "ToolBridge"} answer. Ask what you would ask a senior sitting next to you.`
+              : "Select the tool, type the problem if you want, and attach supporting files only when they help."}
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
@@ -185,7 +191,7 @@ export function ToolForm({
             <div>
               <div className="flex items-center justify-between gap-3">
                 <label htmlFor="problem" className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  2. Describe your problem
+                  {isFollowUp ? "2. Ask your follow-up question" : "2. Describe your problem"}
                 </label>
                 <span
                   className={cn(
@@ -201,12 +207,18 @@ export function ToolForm({
                 id="problem"
                 value={problem}
                 onChange={(event) => onProblemChange(event.target.value.slice(0, maxCharacters))}
-                placeholder="Type the issue here, or leave this brief and let the PDF / screenshot carry more context."
+                placeholder={
+                  isFollowUp
+                    ? "Example: I reached step 3 but PSS still does not converge. What should I change first?"
+                    : "Type the issue here, or leave this brief and let the PDF / screenshot carry more context."
+                }
                 className="mt-4 min-h-[120px] w-full rounded-2xl border border-gray-200 bg-white px-4 py-4 text-base leading-7 text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20 sm:min-h-[180px]"
               />
               <div className="mt-2 flex items-center justify-between gap-3">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  You can submit with typed text, an uploaded file, or both.
+                  {isFollowUp
+                    ? "Short follow-ups are okay because ToolBridge will use the previous answer as context."
+                    : "You can submit with typed text, an uploaded file, or both."}
                 </p>
                 {problemError ? <p className="text-sm text-red-600 dark:text-red-400">{problemError}</p> : null}
               </div>
@@ -342,7 +354,7 @@ export function ToolForm({
             ) : null}
 
             <Button type="submit" size="lg" className="min-h-[48px] w-full sm:w-auto" disabled={isSubmitting}>
-              {isSubmitting ? loadingMessage : "Get Step-by-Step Help"}
+              {isSubmitting ? loadingMessage : isFollowUp ? "Send Follow-Up" : "Get Step-by-Step Help"}
             </Button>
           </form>
         </CardContent>
