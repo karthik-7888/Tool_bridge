@@ -1,110 +1,150 @@
 import { getToolById } from "@/lib/tools";
 import type { SolveInput } from "@/types";
 
-// ============================================
-// TOOL-SPECIFIC KNOWLEDGE BASES
-// ============================================
-
 const ICCAP_KNOWLEDGE = `
-ICCAP-SPECIFIC KNOWLEDGE:
+ICCAP KNOWLEDGE - DEVICE MODELING:
 
-LEVEL 1 DIODE MODEL — Parameter optimization ORDER (critical):
-Never optimize all at once. Always follow this order:
-1. IS (saturation current) — controls overall current level
-2. N (ideality factor) — controls slope of log(I) vs V
-3. RS (series resistance) — only affects high current region
-4. CJO (zero-bias junction capacitance) — start C-V fitting here
-5. VJ (junction potential) — affects C-V shape
-6. M (grading coefficient) — affects C-V voltage dependence
-7. EG (bandgap energy) — temperature coefficient
-8. XTI (temperature exponent) — optimize last, only for temp sweeps
+SETUP:
+- Load ICCAP through your institution module system
+- Launch with: iccap
+- If launch fails: check the module and license
+- If startup crashes: check ICCAP_PYTHONHOME points to a valid Python path
+- Very large list sweeps can make model files load slowly
+
+LEVEL 1 DIODE MODEL - parameter optimization order:
+Never optimize all parameters at once. Use this order:
+1. IS - controls overall current level and is the most sensitive parameter
+2. N - controls the slope of the log(I) versus V curve
+3. RS - only affects the high-current region, so optimize after IS and N
+4. CJO - start C-V fitting here
+5. VJ - affects the C-V shape
+6. M - affects C-V voltage dependence
+7. EG - temperature coefficient
+8. XTI - optimize last, only for temperature sweeps
+
+WHY THIS ORDER MATTERS:
+- If IS is wrong, N optimization often diverges
+- RS is mainly a high-current correction, so optimizing it too early gives misleading fits
+- Temperature parameters are not useful until the DC curve is already correct
 
 WHAT GOOD CORRELATION LOOKS LIKE:
 - I-V: simulated within 2x of measured across all bias points
-- C-V: simulated within 10% of measured at zero bias
-- If off by 100x: IS is wrong, fix it first before anything else
-- If slope is wrong: N is wrong
-- If high-current region diverges: RS is wrong
+- C-V: simulated within 10 percent of measured at zero bias
+- If off by 100x: IS is wrong, fix it first
+- If the I-V slope is wrong: N is wrong
+- If the high-current region diverges: RS is wrong
+- If the C-V shape is wrong: VJ or M is wrong
+
+NEGATIVE RS AFTER OPTIMIZATION:
+- RS must stay physically positive
+- If the optimizer gives negative RS: set the lower bound to 0
+- This usually means the optimizer is compensating for a bad IS or N fit
+- Fix: reset RS to 0, re-optimize IS and N, then allow RS to move again
+
+WHEN C-V DATA IS MISSING:
+- You can still extract IS, N, and RS without C-V data
+- Set CJO, VJ, and M to reasonable defaults from literature or your course notes
+- State clearly in the report that C-V parameters were not optimized due to missing data
 
 N-DIFFUSION RESISTOR MODEL:
-- Screen data first: plot R vs L at fixed V for each W
-- Good data: R increases linearly with L
-- Bad data: outliers, non-monotonic, jumps — remove before fitting
-- Optimize RSH (sheet resistance) first, then contact resistance
-- TCR: optimize after IV and RV fits
-- VCR: optimize last
+- Screen data before optimization
+- Plot R versus L at fixed V for each W
+- Good data forms straight lines consistent with R = RSH * L/W + 2*Rcont
+- Remove outliers, non-monotonic data, and geometry jumps before fitting
+- Optimize RSH first, then contact resistance
+- Optimize TCR after IV and RV fits
+- Optimize VCR last
 
 ICCAP OPTIMIZE DUT WORKFLOW:
-1. Select correct DUT from tree on left panel
-2. Set optimization targets — which measured curves to fit
-3. Set parameter bounds — use physically reasonable limits
-4. Use gradient-based optimizer first
-5. If stuck in local minimum: switch to random optimizer to escape
-6. Check correlation visually before saving parameters
+1. Select the correct DUT from the tree on the left
+2. Verify you did not accidentally select the wrong DUT
+3. Set optimization targets for the measured curves you want to fit
+4. Set parameter bounds, for example RS lower bound = 0 and IS lower bound = 1e-20
+5. Start with a gradient-based optimizer
+6. If stuck in a local minimum, switch to a random optimizer briefly, then return to gradient
+7. Check correlation visually before saving
+8. Save immediately after optimization
 
 PEL TRANSFORMS:
-- Used to create derived plot variables
-- Essential for geometry scaling plots in reports
-- Find in: Transform menu inside ICCAP
+- Used for derived plot variables in geometry scaling plots
+- Important for current versus area and current versus perimeter reporting
+- Find them in the Transform menu inside ICCAP
 
-SAVING IN ICCAP:
-- Save frequently — ICCAP can crash unexpectedly on older setups
-- Export parameters after optimization via File menu
-- Export plots as PNG or PDF for your report
+SAVING WORK:
+- Save frequently because older ICCAP setups can crash
+- Export parameters through File menu or model-parameter export
+- Export plots as PNG or PDF for reports
+- If the session crashes, check autosave or backup directories
 
 COMMON ICCAP MISTAKES:
-- Optimizing all parameters at once — always diverges
-- Not checking raw data quality before optimizing
-- Forgetting to save optimized parameters
-- Wrong DUT selected — you are fitting the wrong device
-- Not using log scale for I-V — you miss the subthreshold region
-- Skipping data screening for geometry scaling
+1. Optimizing all parameters simultaneously
+2. Skipping data screening
+3. Forgetting to save optimized parameters
+4. Selecting the wrong DUT
+5. Not using log scale for I-V plots
+6. Not checking that the simulation model loads correctly before optimization
+7. Leaving parameters unbounded so the optimizer finds unphysical values
 `;
 
 const CADENCE_VIRTUOSO_KNOWLEDGE = `
 CADENCE VIRTUOSO KNOWLEDGE:
 
-MODEL LIBRARY SETUP (most common source of confusion):
-1. In ADE L or ADE XL: go to Setup → Model Libraries
-2. Click Add Row
-3. Browse to your PDK model file (.scs or .lib extension)
-4. Set Section name to: tt (typical-typical for nominal)
-5. Common mistake: wrong section name causes "model not found"
-6. PDK location varies by institution — check with your lab TA
+LAUNCH:
+- Launch Virtuoso from your working directory, not your home directory
+- Command: virtuoso &
+- If a previous session crashed, leftover .cdslck files can force read-only behavior
+- If a schematic opens read-only, check for stale .cdslck files in library directories
+
+MODEL LIBRARY SETUP:
+The error "model not found" usually means one of these:
+1. The model path was not added in ADE through Setup -> Model Libraries -> Add Row
+2. The section name is wrong, usually it should be tt
+3. The path is missing from cds.lib
+4. The model file is for a different simulator than the one selected
+
+To find the library path:
+- Library Manager -> select library -> Edit -> Properties -> readPath
+- Use that path when adding model libraries in ADE
 
 TECHNOLOGY LIBRARY ATTACHMENT:
-1. File → New → Library
-2. In New Library dialog: choose to attach existing technology
-3. Browse to your PDK technology file (.tf)
-4. If PDK not listed: ask your lab admin for the correct path
-5. After attaching: library appears in Library Manager
+1. File -> New -> Library
+2. Attach to an existing technology
+3. Browse to the PDK technology file .tf
+4. If the PDK does not appear, ask your lab admin for the installed path
+
+CDS.LIB PROBLEMS:
+- cds.lib defines where Virtuoso looks for libraries
+- If your libraries disappear after relaunch, you probably launched from the wrong directory
+- Use CIW library-path tools to verify all referenced paths still exist
+
+ADE L OR ADE XL SETUP:
+1. Tools -> Analog Design Environment
+2. Setup -> Simulator/Directory/Host -> choose spectre
+3. Setup -> Model Libraries -> add PDK model file
+4. Setup -> Stimuli -> Global Sources -> set VDD correctly
+5. Analyses -> Choose -> select the simulation type
+6. Run -> Netlist and Run
+
+CONVERGENCE ERRORS:
+- Check for floating nodes
+- Add a large resistor such as 1G ohm from a floating node to ground
+- Increase maxiters in convergence options
+- Add initial conditions if the circuit has multiple stable states
+- Try a small cmin such as 1fF if needed
 
 SAVING OUTPUTS AND WAVEFORMS:
-- Waveforms: in WaveScan → File → Export → CSV or Raw
-- Simulation state: ADE L → Session → Save State
-- Netlist export: Simulation → Netlist → Create
-- Save frequently — long simulations are expensive to re-run
-
-FINDING STANDARD CELLS:
-1. Library Manager → search inside your PDK library
-2. Filter by cell category: sequential or combinational
-3. If cells not visible: verify correct technology library is attached
-
-OPAMP OR COMPLEX BLOCK AS BLACKBOX:
-1. Create new cellview → select verilogA as the view type
-2. Write Verilog-A model with your target specs as parameters
-3. Save inside your local working library
-4. Instantiate it like any schematic cell
-5. Set parameter values in instance properties dialog
+- Waveforms: WaveScan -> File -> Export -> CSV or Raw
+- Simulation state: ADE L -> Session -> Save State
+- Netlist export: Simulation -> Netlist -> Create
+- Save manually before closing
 
 COMMON VIRTUOSO ERRORS:
-- "model not found": library path wrong or section name wrong
-- "cannot open cellview": check cds.lib includes your library path
-- "permission denied": file owned by someone else, copy to your lib
-- "virtuoso not launching": check license availability, try later
-- "ADE XL very slow": reduce sweep points for initial debug runs
-- "schematic not opening": your lab config file may need updating,
-  ask your TA for the latest environment setup file
+- "cannot open input file .scs": model path wrong
+- "model not found": section name or path wrong
+- "cannot open cellview": cds.lib does not include the library path
+- "permission denied": copy the design into your own library
+- "virtuoso not launching": license issue or bad environment setup
+- "ADE XL very slow": reduce sweep points for early debug runs
 `;
 
 const SPECTRE_KNOWLEDGE = `
@@ -117,217 +157,243 @@ SIMULATION TYPES:
 - Noise: noise spectral density analysis
 - Monte Carlo: statistical process variation
 
-VGS vs ID CURVE SETUP:
-1. ADE L → Analyses → Choose → dc
-2. Sweep variable: your VGS voltage source
-3. Range: 0 to VDD, step 0.01V
-4. Outputs → Save → select drain current of your MOSFET
-5. Run → Results → Direct Plot → DC → select ID
+VGS VERSUS ID CURVE SETUP:
+1. Analyses -> Choose -> dc
+2. Sweep the VGS source
+3. Use a range from 0 to VDD with a reasonable step like 0.01V
+4. Save the drain current output
+5. Plot the DC result after simulation
 
 OPAMP AC ANALYSIS:
-1. Analyses → Choose → ac
-2. Frequency range: 1Hz to 1GHz
-3. Output: select Vout node
-4. After sim: find gain-bandwidth where |gain| crosses 0dB
-5. Phase margin: read phase at that same frequency
+1. Analyses -> Choose -> ac
+2. Set the frequency range, for example 1Hz to 1GHz
+3. Plot Vout and read gain crossover
+4. Phase margin is the phase at the 0dB crossing
 
-DC CONVERGENCE FIX:
-1. Simulation → Options → Convergence
-2. Increase maxiters from 150 to 500
-3. Check schematic for floating unconnected nodes
-4. Add .ic initial condition if circuit has multiple states
+DC CONVERGENCE FIXES:
+- Increase maxiters
+- Check for floating nodes
+- Add initial conditions for bistable circuits
+- Try small conductance or capacitance aids only when needed
 
 MONTE CARLO SETUP:
-1. ADE XL → Analyses → montecarlo
-2. numruns: start with 100 for debug, use 500 for final
-3. Enable both process variation and device mismatch
-4. Results → Histogram to view distribution
+1. ADE XL -> Analyses -> montecarlo
+2. Start with around 100 runs for debug
+3. Enable both process variation and mismatch
+4. Use histograms to inspect the result spread
 `;
 
 const CADENCE_RF_KNOWLEDGE = `
-RF AND ANALOG SIMULATION KNOWLEDGE (Cadence Spectre/SpectreRF):
+CADENCE SPECTRE AND SPECTRERF KNOWLEDGE:
 
-PSS SIMULATION (Periodic Steady State) - needed for VCO/PLL:
-- Required before Pnoise analysis
-- In ADE L: Analyses -> Choose -> pss
-- Set fundamental frequency to your oscillation frequency, for example 2.4GHz
-- Set tstab to at least 100 oscillation cycles, for example 100/2.4GHz = 41ns
-- Set beat frequency equal to the oscillation frequency
-- Use errpreset = moderate for the first run, liberal if convergence issues persist
-- If PSS fails to converge, check initial conditions and try liberal preset
+SIMULATION TYPES:
+- DC: operating point and sweeps
+- AC: small-signal frequency response
+- Transient: time-domain behavior
+- Noise: noise spectral density
+- PSS: Periodic Steady State for oscillators and PLLs
+- Pnoise: phase noise, requires PSS first
+- Monte Carlo: statistical variation analysis
 
-PNOISE SIMULATION (Phase Noise):
-- Run PSS first because Pnoise depends on the PSS solution
-- Analyses -> Choose -> pnoise
-- Set relative harmonic to 1 for the fundamental
-- Sweep offset frequency from 1kHz to 100MHz on a log scale
-- After simulation: Results -> Direct Plot -> Phase Noise
-- Read PN at 1MHz as the value at 1MHz offset on the plot
-- Units are dBc/Hz
+WHY PSS INSTEAD OF TRANSIENT FOR VCO OR PLL:
+- Transient can show oscillation but cannot directly give phase noise
+- Transient is slow at RF frequencies
+- PSS finds the periodic steady state mathematically and is much faster for RF analysis
 
-MEASURING PHASE NOISE AT 1MHz OFFSET:
-1. Run PSS and then Pnoise
-2. Results -> Direct Plot -> Pnoise -> select Phase Noise
-3. In the waveform window, place a marker at 1MHz offset
-4. Read the y-axis value in dBc/Hz
-5. Target for LC VCO is typically better than -100 dBc/Hz
-6. Target for ring oscillator is typically better than -80 dBc/Hz
+PSS SETUP FOR VCO:
+1. Run transient first to confirm the oscillator actually starts
+2. In ADE: Analyses -> Choose -> pss
+3. Set beat frequency to the actual oscillation frequency
+4. Set tstab long enough for startup, for example at least 50 cycles
+5. Start with errpreset = moderate
+6. Shooting Newton is usually right for nonlinear oscillators
+7. Harmonic Balance can help for near-sinusoidal LC oscillators
+
+PSS CONVERGENCE FIXES:
+- Measure the actual oscillation frequency from transient first
+- If dividers are present, the PSS fundamental must match the divided periodicity seen by the whole circuit
+- Increase tstab if startup is slow
+- Add a small resistor to floating nodes
+- Add a very small capacitor in series with inductors if convergence is stubborn
+- Try errpreset = liberal if moderate fails
+- Switch between Shooting Newton and Harmonic Balance
+
+PNOISE SIMULATION:
+1. Run PSS successfully first
+2. Analyses -> Choose -> pnoise
+3. Set relative harmonic = 1
+4. Sweep offset frequency from 1kHz to 100MHz on a log scale
+5. Plot phase noise and read PN at 1MHz offset
+
+PHASE-NOISE TARGETS:
+- LC VCO target around better than -100 dBc/Hz at 1MHz offset
+- Ring oscillator target around better than -80 dBc/Hz at 1MHz offset
 
 FOM CALCULATION:
-- FoM = |PN| + 20*log10(f0/df) - 10*log10(Pdc_mW)
-- PN is phase noise at offset df
-- f0 is oscillation frequency, for example 2.4GHz
-- df is the offset frequency, for example 1MHz
-- Pdc_mW is DC power in milliwatts
+- FoM = |PN@1MHz| + 20*log10(f0/df) - 10*log10(Pdc_mW)
+- FoMT = FoM + 20*log10(FTR/10)
 - Keep units consistent before calculating
 
-TUNING RANGE MEASUREMENT:
-1. Sweep Vctrl, the varactor control voltage
-2. Plot oscillation frequency versus Vctrl
-3. Find fmax and fmin
-4. FTR = (fmax - fmin) / fc * 100%
-5. fc = (fmax + fmin) / 2
-6. For PSS-based measurement, use a parametric sweep on Vctrl
+TUNING RANGE:
+1. Sweep Vctrl in a parametric PSS run
+2. Extract oscillation frequency at each Vctrl
+3. Compute fmax, fmin, fc, and FTR
 
-NMOS CROSS-COUPLED LC VCO SETUP:
-- Typical topology is cross-coupled NMOS pair plus tail current source plus LC tank
-- Inductor Q = 10 means ideal assumptions may be too optimistic, so check what model your lab expects
-- Use a PDK varactor when available, otherwise confirm whether MOS capacitor approach is acceptable
-- Start L and C from resonance: f = 1/(2*pi*sqrt(LC))
-- Tail current can start around 1mA to 2mA, then trade off phase noise versus power
+PLL SIMULATION:
+- Use transient to check lock behavior
+- Measure lock time from output frequency or control-voltage settling
+- Verify PFD polarity, charge-pump direction, and loop bandwidth assumptions
 
-RING OSCILLATOR SETUP:
-- A 3-stage inverter ring is the simplest starting point
-- For 2.4GHz, each stage delay is approximately 1 / (2*N*f)
-- Vctrl usually changes current starving or effective load
-- Expect worse phase noise than LC VCO
-
-INTEGER-N PLL DESIGN:
-Components usually include:
-1. VCO from the earlier assignment
-2. Frequency divider divide-by-N, often behavioral at first
-3. Phase-frequency detector
-4. Charge pump
-5. Passive RC loop filter
-
-PLL SIMULATION IN CADENCE:
-- Use transient simulation to check lock behavior
-- Measure lock time as the time needed for output frequency or control voltage to settle
-- Loop bandwidth strongly affects both lock time and phase noise filtering
-- Check for PFD dead zone and correct charge pump current polarity
-
-COMMON RF SIMULATION MISTAKES:
-- Running AC instead of PSS for an oscillator
-- Using too short a tstab so the oscillator has not settled
-- Forgetting to set beat frequency in PSS
-- Reading phase noise at the wrong offset frequency
-- Ignoring output buffer loading on the VCO
-- Calculating FoM with inconsistent units
+COMMON RF MISTAKES:
+- Using AC instead of PSS for oscillators
+- Too-short tstab
+- Wrong beat frequency
+- Reading phase noise at the wrong offset
+- Ignoring output buffer loading
+- Using inconsistent units in FoM calculations
 `;
 
 const CALIBRE_KNOWLEDGE = `
 CALIBRE KNOWLEDGE:
 
-LOADING CALIBRE:
-- Load via your institution module system
-- Launch from Virtuoso: Calibre menu → Run DRC or Run LVS
-- Standalone launch: calibre -gui &
+SETUP:
+- Load the Calibre module through your institution environment
+- Launch from Virtuoso through the Calibre menu or use calibre -gui &
+- The Help or InfoHub inside Calibre is often worth checking for deck-specific behavior
+
+RUNSET FILES:
+- A runset is a saved Calibre configuration
+- You do not need one for the first run
+- After a successful run, save a runset so you can reproduce settings
 
 DRC WORKFLOW:
-1. Calibre Interactive → DRC tab
-2. Load rule deck: your PDK provides a .drc file
-3. Input layout: your GDS or OASIS file
-4. Run DRC → open Results Viewer when complete
-5. Each error shows rule name and violation location
-6. Click any error → Virtuoso highlights the location in layout
+1. Open Calibre DRC from Virtuoso
+2. Load the PDK DRC rule file
+3. Point inputs to the correct GDS or OASIS data
+4. Run DRC
+5. Use the results viewer to inspect violations
+6. Click an error to highlight it back in layout
+
+COMMON DRC ERRORS:
+- Metal spacing: move shapes farther apart
+- Metal width: widen narrow wires
+- Enclosure: increase metal overlap around vias or contacts
+- Off-grid: align geometry to the PDK snap grid
+- Density: often secondary for student cell-level work unless the assignment explicitly requires fixing it
 
 LVS WORKFLOW:
-1. Calibre Interactive → LVS tab
-2. Export layout netlist: in Virtuoso → Calibre → Export Netlist
-3. Export schematic netlist: same Calibre menu in schematic
-4. Run LVS → check for port mismatches and device mismatches
-5. Most common: missing connection, swapped ports, wrong device size
+1. Get DRC reasonably clean first
+2. Export layout netlist through Calibre netlist export
+3. Export schematic netlist from the schematic side
+4. Load both into Calibre LVS
+5. Run LVS and inspect transcript plus results viewer
+
+COMMON LVS FAILURES:
+- Net mismatch: layout connection does not match schematic
+- Device mismatch: wrong W, L, or device type
+- Port mismatch: pin labels do not match schematic ports
+- Wrong label layer purpose: use the pin purpose, not the drawing purpose
+- Multifinger devices may appear as split devices if the PDK recognition rules are not satisfied
+
+SVDB DIRECTORY:
+- svdb stores extracted data for LVS
+- Keep it between normal reruns
+- If LVS starts behaving strangely, delete svdb and rerun from scratch
 
 LICENSE ISSUES:
-- If license not available: wait a few minutes and retry
-- Try during off-peak hours if repeatedly unavailable
-- Contact your lab admin if problem persists for hours
-
-UNDERSTANDING DRC ERRORS:
-- Metal spacing: two metal shapes too close, move them apart
-- Metal width: wire too narrow, widen it
-- Enclosure: via not surrounded enough by metal layer
-- Density: add or remove metal fill to meet density rules
+- If the license is unavailable, wait and retry or use off-peak hours
+- Escalate to the lab admin if the problem persists for a long period
 `;
 
 const VIVADO_KNOWLEDGE = `
 VIVADO KNOWLEDGE:
 
-LAUNCH ERRORS:
-- "Exiting with status code -1": almost always disk space issue
-- Check disk: run df -h in terminal, look for partition near 100%
-- Clear Vivado temp: rm -rf /tmp/.Xil* then relaunch
-- "No space left on device": old project files filling disk, clean up
+LAUNCH ISSUES:
+- "Exiting with status code -1" usually means disk-space trouble
+- Check disk usage
+- Clear temporary Vivado files such as /tmp/.Xil*
+- Remove stale journals under ~/.Xil if needed
+- Do not delete the project .xpr or source directory while cleaning up
 
-BASIC PROJECT FLOW:
-1. Create Project → RTL Project → Add your source files
-2. Add constraints file (.xdc) for pin and timing
-3. Run Synthesis → read log for errors and warnings
-4. Run Implementation → check timing summary
-5. Generate Bitstream → program your board
+BASIC FLOW:
+1. Create project and add RTL sources
+2. Add XDC constraints
+3. Run synthesis and read errors plus critical warnings
+4. Run implementation and inspect timing
+5. Generate bitstream and program the board
 
-TIMING CONSTRAINTS IN XDC:
-- Define clock: create_clock -period 10 [get_ports clk]
-- Input delay: set_input_delay -clock clk 2 [get_ports din]
-- Output delay: set_output_delay -clock clk 2 [get_ports dout]
-- If timing fails: relax clock period first to find real slack
+TIMING ANALYSIS:
+- WNS must be zero or positive for setup timing to pass
+- TNS shows the total amount of negative slack across failing paths
+- If the critical path contains CARRY8, investigate adders or subtractors
+- If it contains DSP48E2, investigate multipliers or DSP-heavy arithmetic
+- High route-delay percentage often points to routing congestion instead of pure logic depth
 
-READING SYNTHESIS LOG:
-- Latch inferred warning: your if or case is incomplete in RTL
-- Unresolved reference: module definition missing or not added
-- After implementation: check post_synth_timing_summary.rpt
+XDC CONSTRAINTS:
+- create_clock -period 10.000 -name clk [get_ports clk]
+- set_input_delay -clock clk -max 2.0 [get_ports din]
+- set_output_delay -clock clk -max 2.0 [get_ports dout]
+- Unconstrained-path warnings usually mean your clock definition does not match the RTL port name
 
-PROGRAMMING THE BOARD:
-1. Generate Bitstream — wait for completion
-2. Open Hardware Manager → Auto Connect
-3. Right-click device → Program Device
-4. Select your .bit file → Program
-5. Not detected: check USB cable, install Digilent or FTDI driver
+FIXING SETUP VIOLATIONS:
+- Add pipeline stages
+- Reduce combinational depth
+- Trim operand width if the RTL uses wider paths than necessary
+- Try stronger implementation strategies only after the RTL and constraints make sense
+- Use multicycle exceptions only when the architecture truly allows them
+
+SYNTHESIS-LOG CLUES:
+- Inferred latch: incomplete if or case logic
+- Unresolved reference: missing module or missing file in project
+- Missing constraints: timing analysis is incomplete
+
+PROGRAMMING:
+1. Generate bitstream
+2. Open Hardware Manager
+3. Auto Connect
+4. Program Device with the .bit file
+5. If the board is not detected, check cable and drivers
 `;
 
 const QUARTUS_KNOWLEDGE = `
 QUARTUS KNOWLEDGE:
 
 PIN ASSIGNMENT:
-1. Assignments → Pin Planner
-2. Find your signal in Node Name column
-3. Set Location to the correct pin from your board manual
-4. Recompile after all pins are assigned
+1. Assignments -> Pin Planner
+2. Find the signal in the Node Name column
+3. Set Location using the correct board manual or schematic
+4. Recompile after changing pin assignments
 
-TIMEQUEST FAILING:
-1. Tools → TimeQuest Timing Analyzer after compilation
-2. Tasks panel → Update Timing Netlist first
-3. Fmax Summary → shows achievable clock frequency
-4. Failing paths: Reports → Timing → Setup Summary
-5. Fix by: tightening constraints, or pipelining RTL
+TIMEQUEST:
+1. Open TimeQuest after compilation
+2. Update the timing netlist first
+3. Read Fmax Summary
+4. Inspect Setup Summary for failing paths
+5. Fix issues with constraints or RTL pipelining
 
-PLL INSTANTIATION:
-1. IP Catalog → search PLL → select ALTPLL
-2. Set input frequency to match your board oscillator
-3. Set output frequency to your target
-4. Finish wizard → instantiate generated module in top RTL
+SDC BASICS:
+- create_clock -period 20.000 [get_ports CLOCK_50]
+- set_input_delay -clock CLOCK_50 -max 3 [get_ports SW*]
+- set_output_delay -clock CLOCK_50 -max 3 [get_ports LED*]
 
-SIGNALTAP SETUP:
-1. File → New → SignalTap II Logic Analyzer File
-2. Add signals you want to capture
-3. Set clock and trigger condition
+PLL SETUP:
+1. Use PLL IP from the catalog
+2. Match the board oscillator frequency
+3. Set the target output frequency
+4. Instantiate the generated block in top-level RTL
+
+SIGNALTAP:
+1. Create a SignalTap file
+2. Add the signals you want to capture
+3. Set the sample clock and trigger
 4. Enable SignalTap in project settings
-5. Recompile → program board → Run Analysis
-`;
+5. Recompile, program, and run capture
 
-// ============================================
-// TOOL KNOWLEDGE SELECTOR
-// ============================================
+FITTER FAILURES:
+- Routing congestion or device overuse are common causes
+- Check resource usage in the fitter report
+- If logic utilization is very high, reduce area or retarget the device
+`;
 
 function getToolKnowledge(toolId: string): string {
   const knowledge: Record<string, string> = {
@@ -337,8 +403,9 @@ function getToolKnowledge(toolId: string): string {
     "cadence-rf": CADENCE_RF_KNOWLEDGE,
     calibre: CALIBRE_KNOWLEDGE,
     vivado: VIVADO_KNOWLEDGE,
-    quartus: QUARTUS_KNOWLEDGE,
+    quartus: QUARTUS_KNOWLEDGE
   };
+
   return knowledge[toolId] ?? "";
 }
 
@@ -350,10 +417,6 @@ function sanitizeUserInput(input: string) {
     .replace(/give\s+me\s+(the\s+)?(api\s+key|apikey|secret)/gi, "[removed]")
     .trim();
 }
-
-// ============================================
-// MAIN PROMPT BUILDER
-// ============================================
 
 export function buildSolvePrompt(input: SolveInput): string {
   const tool = getToolById(input.tool);
@@ -389,19 +452,14 @@ ${sanitizeUserInput(previousContext.stillStuck)}
     : "No previous answer. This is the first question in the thread.";
 
   return `
-You are a senior engineer and TA who has helped hundreds of 
-EE/ECE students with EDA tool assignments at top engineering 
-universities. You remember exactly how confusing these tools 
-were when you first used them. Your goal is to make the 
-student feel relieved, not more overwhelmed.
+You are a senior engineer and TA who has helped hundreds of EE/ECE students with EDA tool assignments at top engineering universities. You remember exactly how confusing these tools were when you first used them. Your goal is to make the student feel relieved, not more overwhelmed.
 
 YOUR TONE:
 - Warm and direct, like a helpful senior who genuinely cares
-- Always say "you" — never "the student"
-- Never say "I don't know" — always give best direction
+- Always say "you", never "the student"
+- Never say "I don't know", always give the best direction
 - Acknowledge that these tools are genuinely non-intuitive
-  It is not the student's fault they are confused.
-- Make them feel: "okay I can do this" — not "this is hard"
+- Make them feel "okay I can do this", not "this is hard"
 
 TOOL: ${toolName}
 
@@ -420,35 +478,24 @@ Conversation context:
 ${previousAnswerContext}
 
 RESPONSE RULES:
-- If this is a follow-up, do NOT restart from scratch.
-  Answer the follow-up directly in the summary first, then only include
-  the next steps needed from the current point.
-  Refer naturally to the previous answer as "the earlier steps" or
-  "where you are now" instead of repeating the whole workflow.
-- Summary: do NOT restate the problem.
-  Start with what is most likely wrong and what the student
-  should do first.
-  The first sentence must be the most actionable sentence possible.
-  If helpful, the second sentence can briefly explain why the
-  issue feels confusing in this tool.
-- dontDoThis: 2 to 5 specific things NOT to do first.
-  Students fear making things worse. This removes that fear.
-- Steps: 3 to 8 steps. Use "you" always.
-  Give FULL menu paths (Setup → Model Libraries → Add Row).
-  Give exact commands where applicable.
-  If an assignment PDF or error screenshot is attached, use that context together with the typed prompt.
-  After step 2 or 3, add an inline checkpoint inside instructions:
-  "You are on track if you see X. If you see Y, go back to step Z."
-  If path varies by institution, say:
-  "Exact path depends on your lab setup — check with your TA,
-   but look for X."
-- commonMistakes: 2 to 5 short items specific to this problem.
-- checkpoint: what success looks like at the end. Be specific.
-- stillStuck: next debugging direction. End with:
-  "Most students solve this in 1 to 2 hours once they follow 
-   this order. You are closer than you think."
+- If this is a follow-up, do not restart from scratch
+- Answer the follow-up directly in the summary first, then include only the next steps needed from the current point
+- Refer naturally to the previous answer as "the earlier steps" or "where you are now" instead of repeating the whole workflow
+- Summary: do not restate the problem. Start with what is most likely wrong and what the student should do first
+- The first sentence must be the most actionable sentence possible
+- If helpful, the second sentence can briefly explain why the issue feels confusing in this tool
+- dontDoThis: 2 to 5 specific things not to do first
+- Steps: 3 to 8 steps. Use "you" always
+- Give full menu paths, for example Setup -> Model Libraries -> Add Row
+- Give exact commands where applicable
+- If an assignment PDF or error screenshot is attached, use that context together with the typed prompt
+- After step 2 or 3, add an inline checkpoint inside instructions: "You are on track if you see X. If you see Y, go back to step Z."
+- If a path varies by institution, say that the exact path depends on the lab setup and what to look for
+- commonMistakes: 2 to 5 short items specific to this problem
+- checkpoint: what success looks like at the end. Be specific
+- stillStuck: next debugging direction. End with "Most students solve this in 1 to 2 hours once they follow this order. You are closer than you think."
 
-Return ONLY raw JSON. No markdown. No code fences. No commentary.
+Return only raw JSON. No markdown. No code fences. No commentary.
 Exact schema:
 {
   "summary": "string",
