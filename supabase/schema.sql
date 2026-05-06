@@ -29,7 +29,9 @@ create table if not exists public.feedback_entries (
   tool_name text,
   problem text,
   summary text,
-  feedback text not null,
+  feedback_text text not null,
+  user_agent text,
+  page_url text,
   created_at timestamptz not null default timezone('utc', now())
 );
 

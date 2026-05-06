@@ -10,17 +10,23 @@ const saveFeedbackSchema = z.object({
   toolName: z.string().trim().min(1).max(120).optional(),
   problem: z.string().trim().min(1).max(2000).optional(),
   summary: z.string().trim().min(1).max(2000).optional(),
-  feedback: z.string().trim().min(10).max(2000)
+  feedback: z.string().trim().min(1).max(2000)
 });
 
 export async function POST(request: Request) {
   try {
     if (!supabaseConfigured) {
-      return NextResponse.json({ saved: false, configured: false });
+      console.error("ToolBridge feedback error: Supabase is not configured in this environment.");
+      return NextResponse.json(
+        { saved: false, configured: false, error: "Feedback storage is not configured yet." },
+        { status: 503 }
+      );
     }
 
     const session = await getServerSession(authOptions);
     const body = saveFeedbackSchema.parse(await request.json());
+    const userAgent = request.headers.get("user-agent");
+    const pageUrl = request.headers.get("referer");
 
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("feedback_entries").insert({
@@ -30,7 +36,9 @@ export async function POST(request: Request) {
       tool_name: body.toolName ?? null,
       problem: body.problem ?? null,
       summary: body.summary ?? null,
-      feedback: body.feedback
+      feedback_text: body.feedback,
+      user_agent: userAgent,
+      page_url: pageUrl
     });
 
     if (error) {
@@ -43,7 +51,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid feedback payload." }, { status: 400 });
     }
 
-    const message = error instanceof Error ? error.message : "Could not save feedback.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("ToolBridge feedback error:", error);
+    return NextResponse.json(
+      { error: "Could not submit feedback right now. Please try again shortly." },
+      { status: 500 }
+    );
   }
 }
