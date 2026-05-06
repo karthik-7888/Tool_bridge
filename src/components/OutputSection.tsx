@@ -4,11 +4,14 @@ import { useState } from "react";
 
 import type { SolveOutput } from "@/types";
 
+import { FeedbackPanel } from "@/components/FeedbackPanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface OutputSectionProps {
+  toolId: string;
   toolName: string;
+  submittedProblem: string;
   response: SolveOutput;
   onFollowUp: () => void;
 }
@@ -46,7 +49,7 @@ If this didn't help, try:
 ${response.stillStuck}`;
 }
 
-export function OutputSection({ toolName, response, onFollowUp }: OutputSectionProps) {
+export function OutputSection({ toolId, toolName, submittedProblem, response, onFollowUp }: OutputSectionProps) {
   const [copiedResponse, setCopiedResponse] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState<number | null>(null);
   const steps = Array.isArray(response.steps) ? response.steps : [];
@@ -184,6 +187,13 @@ export function OutputSection({ toolName, response, onFollowUp }: OutputSectionP
           </CardContent>
         </Card>
       </div>
+
+      <FeedbackPanel
+        toolId={toolId}
+        toolName={toolName}
+        problem={submittedProblem}
+        summary={response.summary}
+      />
     </section>
   );
 }

@@ -410,7 +410,9 @@ export function HomePageClient() {
       {result ? (
         <div ref={outputSectionRef}>
           <OutputSection
+            toolId={result.toolId}
             toolName={result.toolName}
+            submittedProblem={result.submittedProblem}
             response={result.response}
             onFollowUp={handleFollowUp}
           />
